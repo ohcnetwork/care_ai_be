@@ -7,7 +7,7 @@ from setuptools import find_packages, setup
 with open("README.md") as readme_file:
     readme = readme_file.read()
 
-with open("README.rst") as history_file:
+with open("README.md") as history_file:
     history = history_file.read()
 
 requirements = [
