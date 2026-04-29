@@ -74,12 +74,25 @@ def _unwrap_output(value):
 def _extract_usage(result) -> dict:
     try:
         usage = result.context_wrapper.usage
-        if hasattr(usage, "model_dump"):
-            return usage.model_dump()
-        return {k: v for k, v in usage.__dict__.items() if not k.startswith("_")}
+        return _to_jsonable(usage)
     except Exception:
         logger.warning("could not extract usage from RunResult", exc_info=True)
         return {}
+
+
+def _to_jsonable(value):
+    """Coerce SDK objects (Usage, RequestUsage, etc.) into JSON-safe primitives."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if isinstance(value, dict):
+        return {k: _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+    if hasattr(value, "__dict__"):
+        return {k: _to_jsonable(v) for k, v in value.__dict__.items() if not k.startswith("_")}
+    return str(value)
 
 
 def _extract_tool_calls(result) -> list[dict]:
