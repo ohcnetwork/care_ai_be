@@ -1,3 +1,4 @@
+from itertools import count
 from typing import Any
 
 import jsonschema
@@ -13,9 +14,9 @@ _TYPE_MAP = {
     "integer": int,
     "number": float,
     "boolean": bool,
-    "array": list,
-    "object": dict,
 }
+
+_model_seq = count(1)
 
 
 def validate_response_schema(schema: dict) -> None:
@@ -32,23 +33,28 @@ def json_schema_to_pydantic(schema: dict | None) -> type[BaseModel] | None:
     if schema is None:
         return None
     validate_response_schema(schema)
+    return _build_object_model(schema, name="AskResponse")
 
+
+def _build_object_model(schema: dict, name: str) -> type[BaseModel]:
     fields: dict[str, tuple[Any, Any]] = {}
     required = set(schema.get("required", []))
-    for name, prop in schema.get("properties", {}).items():
-        py_type = _resolve_type(prop)
-        if name in required:
-            fields[name] = (py_type, Field(..., description=prop.get("description")))
+    for prop_name, prop in schema.get("properties", {}).items():
+        py_type = _resolve_type(prop, parent_name=f"{name}_{prop_name}")
+        description = prop.get("description")
+        if prop_name in required:
+            fields[prop_name] = (py_type, Field(..., description=description))
         else:
-            fields[name] = (py_type | None, Field(None, description=prop.get("description")))
+            fields[prop_name] = (py_type | None, Field(None, description=description))
+    return create_model(name, **fields)
 
-    return create_model("AskResponse", **fields)
 
-
-def _resolve_type(prop: dict) -> Any:
+def _resolve_type(prop: dict, parent_name: str = "Item") -> Any:
     t = prop.get("type")
+    if t == "object":
+        return _build_object_model(prop, name=f"{parent_name}_{next(_model_seq)}")
     if t == "array":
         items = prop.get("items", {})
-        item_type = _resolve_type(items) if items else Any
+        item_type = _resolve_type(items, parent_name=parent_name) if items else Any
         return list[item_type]
     return _TYPE_MAP.get(t, Any)
