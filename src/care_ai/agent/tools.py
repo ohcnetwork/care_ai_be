@@ -6,6 +6,7 @@ from care.emr.models import (
     AllergyIntolerance,
     Condition,
     Encounter,
+    MedicationAdministration,
     MedicationRequest,
     Observation,
     Patient,
@@ -15,6 +16,9 @@ from care.emr.models import (
 from care.emr.resources.allergy_intolerance.spec import AllergyIntoleranceReadSpec
 from care.emr.resources.condition.spec import ConditionReadSpec
 from care.emr.resources.encounter.spec import EncounterListSpec, EncounterRetrieveSpec
+from care.emr.resources.medication.administration.spec import (
+    MedicationAdministrationReadSpec,
+)
 from care.emr.resources.medication.request.spec import MedicationRequestReadSpec
 from care.emr.resources.observation.spec import ObservationReadSpec
 from care.emr.resources.patient.spec import PatientRetrieveSpec
@@ -153,6 +157,28 @@ def get_prior_encounters(
 
 
 @function_tool
+def get_medication_administrations(
+    ctx: RunContextWrapper[PatientContext],
+    hours: int = 72,
+) -> dict:
+    """List MedicationAdministration records (actual doses given) on the current encounter within the last `hours` (1-720, default 72).
+
+    Distinct from get_active_medications, which lists prescriptions/orders.
+    Useful for confirming what was actually administered, when, and by whom.
+    """
+    try:
+        hours = max(1, min(720, hours))
+        qs = MedicationAdministration.objects.filter(
+            encounter__external_id=ctx.context.current_encounter_id,
+            created_date__gte=now_minus(hours=hours),
+        ).order_by("-created_date")
+        return serialize_list(MedicationAdministrationReadSpec, qs, limit=200)
+    except Exception as exc:
+        logger.exception("get_medication_administrations failed")
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+@function_tool
 def get_from_responses(
     ctx: RunContextWrapper[PatientContext],
     limit: int = 50,
@@ -209,5 +235,6 @@ ALL_TOOLS = [
     get_recent_observations,
     get_service_requests,
     get_prior_encounters,
+    get_medication_administrations,
     get_from_responses,
 ]
