@@ -9,6 +9,7 @@ from care.emr.models import (
     MedicationRequest,
     Observation,
     Patient,
+    QuestionnaireResponse,
     ServiceRequest,
 )
 from care.emr.resources.allergy_intolerance.spec import AllergyIntoleranceReadSpec
@@ -151,6 +152,54 @@ def get_prior_encounters(
         return {"error": f"{type(exc).__name__}: {exc}"}
 
 
+@function_tool
+def get_from_responses(
+    ctx: RunContextWrapper[PatientContext],
+    limit: int = 50,
+) -> dict:
+    """List submitted QuestionnaireResponse entries (forms) for the current encounter.
+
+    Each item includes the questionnaire title/slug, status, who submitted it,
+    when, and a list of question/answer pairs from `render_responses()`. Useful
+    for computing scores (NEWS2, GCS, qSOFA, MEWS, pain scales) or pulling
+    specific values out of structured forms.
+    """
+    try:
+        limit = max(1, min(200, limit))
+        qs = (
+            QuestionnaireResponse.objects.select_related("questionnaire", "created_by")
+            .filter(encounter__external_id=ctx.context.current_encounter_id)
+            .order_by("-created_date")
+        )
+        rows = list(qs[: limit + 1])
+        truncated = len(rows) > limit
+        rows = rows[:limit]
+
+        items = []
+        for r in rows:
+            q = r.questionnaire
+            items.append(
+                {
+                    "id": str(r.external_id),
+                    "questionnaire": {
+                        "id": str(q.external_id) if q else None,
+                        "slug": q.slug if q else None,
+                        "title": q.title if q else None,
+                    },
+                    "status": r.status,
+                    "submitted_at": r.created_date.isoformat() if r.created_date else None,
+                    "submitted_by": (
+                        r.created_by.username if r.created_by_id else None
+                    ),
+                    "responses": r.render_responses(),
+                }
+            )
+        return {"items": items, "count": len(items), "truncated": truncated}
+    except Exception as exc:
+        logger.exception("get_from_responses failed")
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
 ALL_TOOLS = [
     get_patient_demographics,
     get_current_encounter,
@@ -160,4 +209,5 @@ ALL_TOOLS = [
     get_recent_observations,
     get_service_requests,
     get_prior_encounters,
+    get_from_responses,
 ]
