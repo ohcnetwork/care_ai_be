@@ -13,9 +13,8 @@ with open("README.md") as history_file:
 requirements = [
     "django>=6.0",
     "djangorestframework",
-    "openai-agents>=0.1.0",
+    "openai>=0.1.0",
     "jsonschema>=4.0",
-    "pydantic>=2.0",
 ]
 
 test_requirements = []

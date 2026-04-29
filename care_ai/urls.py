@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.urls import path
 
-from care_ai.views import AskAPIView
+from care_ai.api.viewsets import AskAPIView
 
 
 def ping(request):
