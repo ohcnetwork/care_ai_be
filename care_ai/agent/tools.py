@@ -1,5 +1,3 @@
-import logging
-
 from agents import RunContextWrapper, function_tool
 
 from care.emr.models.allergy_intolerance import AllergyIntolerance
@@ -23,138 +21,113 @@ from care.emr.resources.patient.spec import PatientRetrieveSpec
 from care.emr.resources.service_request.spec import ServiceRequestReadSpec
 
 from care_ai.agent.context import PatientContext
-from care_ai.agent.tool_helpers import now_minus, serialize_list
+from care_ai.agent.tool_helpers import now_minus, safe_tool, serialize_list
 from care_ai.settings import plugin_settings
 
-logger = logging.getLogger("care_ai.tools")
-
 
 @function_tool
+@safe_tool
 def get_patient_demographics(ctx: RunContextWrapper[PatientContext]) -> dict:
     """Return basic demographics (age, sex, blood group, identifiers) for the current patient."""
-    try:
-        patient = Patient.objects.get(external_id=ctx.context.patient_id)
-        return PatientRetrieveSpec.serialize(patient).to_json()
-    except Exception as exc:
-        logger.exception("get_patient_demographics failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    patient = Patient.objects.get(external_id=ctx.context.patient_id)
+    return PatientRetrieveSpec.serialize(patient).to_json()
 
 
 @function_tool
+@safe_tool
 def get_current_encounter(ctx: RunContextWrapper[PatientContext]) -> dict:
     """Return details (class, status, period, priority, location, care team) of the current encounter."""
-    try:
-        encounter = Encounter.objects.get(external_id=ctx.context.current_encounter_id)
-        return EncounterRetrieveSpec.serialize(encounter).to_json()
-    except Exception as exc:
-        logger.exception("get_current_encounter failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    encounter = Encounter.objects.get(external_id=ctx.context.current_encounter_id)
+    return EncounterRetrieveSpec.serialize(encounter).to_json()
 
 
 @function_tool
+@safe_tool
 def get_active_allergies(ctx: RunContextWrapper[PatientContext]) -> dict:
     """List active AllergyIntolerance entries for the patient with criticality."""
-    try:
-        qs = AllergyIntolerance.objects.filter(
-            patient__external_id=ctx.context.patient_id,
-            clinical_status="active",
-        ).order_by("-created_date")
-        return serialize_list(AllergyIntoleranceReadSpec, qs, limit=200)
-    except Exception as exc:
-        logger.exception("get_active_allergies failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    qs = AllergyIntolerance.objects.filter(
+        patient__external_id=ctx.context.patient_id,
+        clinical_status="active",
+    ).order_by("-created_date")
+    return serialize_list(AllergyIntoleranceReadSpec, qs, limit=200)
 
 
 @function_tool
+@safe_tool
 def get_active_conditions(ctx: RunContextWrapper[PatientContext]) -> dict:
     """List active Conditions (symptoms + diagnoses) for the patient with severity and onset."""
-    try:
-        qs = Condition.objects.filter(
-            patient__external_id=ctx.context.patient_id,
-            clinical_status="active",
-        ).order_by("-created_date")
-        return serialize_list(ConditionReadSpec, qs, limit=200)
-    except Exception as exc:
-        logger.exception("get_active_conditions failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    qs = Condition.objects.filter(
+        patient__external_id=ctx.context.patient_id,
+        clinical_status="active",
+    ).order_by("-created_date")
+    return serialize_list(ConditionReadSpec, qs, limit=200)
 
 
 @function_tool
+@safe_tool
 def get_active_medications(ctx: RunContextWrapper[PatientContext]) -> dict:
     """List active medication requests for the patient."""
-    try:
-        qs = MedicationRequest.objects.filter(
-            patient__external_id=ctx.context.patient_id,
-            status="active",
-        ).order_by("-created_date")
-        return serialize_list(MedicationRequestReadSpec, qs, limit=200)
-    except Exception as exc:
-        logger.exception("get_active_medications failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    qs = MedicationRequest.objects.filter(
+        patient__external_id=ctx.context.patient_id,
+        status="active",
+    ).order_by("-created_date")
+    return serialize_list(MedicationRequestReadSpec, qs, limit=200)
 
 
 @function_tool
+@safe_tool
 def get_recent_observations(
     ctx: RunContextWrapper[PatientContext],
     hours: int = 24,
 ) -> dict:
     """List Observations (vitals, labs) recorded within the last `hours` (1-720, default 24)."""
-    try:
-        hours = max(1, min(720, hours))
-        qs = Observation.objects.filter(
-            patient__external_id=ctx.context.patient_id,
-            effective_datetime__gte=now_minus(hours=hours),
-        ).order_by("-effective_datetime")
-        return serialize_list(
-            ObservationReadSpec,
-            qs,
-            limit=plugin_settings.CARE_AI_OBSERVATION_ROW_LIMIT,
-        )
-    except Exception as exc:
-        logger.exception("get_recent_observations failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    hours = max(1, min(720, hours))
+    qs = Observation.objects.filter(
+        patient__external_id=ctx.context.patient_id,
+        effective_datetime__gte=now_minus(hours=hours),
+    ).order_by("-effective_datetime")
+    return serialize_list(
+        ObservationReadSpec,
+        qs,
+        limit=plugin_settings.CARE_AI_OBSERVATION_ROW_LIMIT,
+    )
 
 
 @function_tool
+@safe_tool
 def get_service_requests(ctx: RunContextWrapper[PatientContext]) -> dict:
     """List ServiceRequests on the current encounter."""
-    try:
-        qs = ServiceRequest.objects.filter(
-            encounter__external_id=ctx.context.current_encounter_id,
-        ).order_by("-created_date")
-        return serialize_list(ServiceRequestReadSpec, qs, limit=200)
-    except Exception as exc:
-        logger.exception("get_service_requests failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    qs = ServiceRequest.objects.filter(
+        encounter__external_id=ctx.context.current_encounter_id,
+    ).order_by("-created_date")
+    return serialize_list(ServiceRequestReadSpec, qs, limit=200)
 
 
 @function_tool
+@safe_tool
 def get_prior_encounters(
     ctx: RunContextWrapper[PatientContext],
     months: int = 12,
 ) -> dict:
     """List the patient's prior encounters within the last `months` (1-60, default 12), excluding the current one."""
-    try:
-        months = max(1, min(60, months))
-        qs = (
-            Encounter.objects.filter(
-                patient__external_id=ctx.context.patient_id,
-                created_date__gte=now_minus(days=30 * months),
-            )
-            .exclude(external_id=ctx.context.current_encounter_id)
-            .order_by("-created_date")
+    months = max(1, min(60, months))
+    qs = (
+        Encounter.objects.filter(
+            patient__external_id=ctx.context.patient_id,
+            created_date__gte=now_minus(days=30 * months),
         )
-        return serialize_list(
-            EncounterListSpec,
-            qs,
-            limit=plugin_settings.CARE_AI_ENCOUNTER_ROW_LIMIT,
-        )
-    except Exception as exc:
-        logger.exception("get_prior_encounters failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+        .exclude(external_id=ctx.context.current_encounter_id)
+        .order_by("-created_date")
+    )
+    return serialize_list(
+        EncounterListSpec,
+        qs,
+        limit=plugin_settings.CARE_AI_ENCOUNTER_ROW_LIMIT,
+    )
 
 
 @function_tool
+@safe_tool
 def get_medication_administrations(
     ctx: RunContextWrapper[PatientContext],
     hours: int = 72,
@@ -164,19 +137,16 @@ def get_medication_administrations(
     Distinct from get_active_medications, which lists prescriptions/orders.
     Useful for confirming what was actually administered, when, and by whom.
     """
-    try:
-        hours = max(1, min(720, hours))
-        qs = MedicationAdministration.objects.filter(
-            encounter__external_id=ctx.context.current_encounter_id,
-            created_date__gte=now_minus(hours=hours),
-        ).order_by("-created_date")
-        return serialize_list(MedicationAdministrationReadSpec, qs, limit=200)
-    except Exception as exc:
-        logger.exception("get_medication_administrations failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    hours = max(1, min(720, hours))
+    qs = MedicationAdministration.objects.filter(
+        encounter__external_id=ctx.context.current_encounter_id,
+        created_date__gte=now_minus(hours=hours),
+    ).order_by("-created_date")
+    return serialize_list(MedicationAdministrationReadSpec, qs, limit=200)
 
 
 @function_tool
+@safe_tool
 def get_from_responses(
     ctx: RunContextWrapper[PatientContext],
     limit: int = 50,
@@ -188,40 +158,38 @@ def get_from_responses(
     for computing scores (NEWS2, GCS, qSOFA, MEWS, pain scales) or pulling
     specific values out of structured forms.
     """
-    try:
-        limit = max(1, min(200, limit))
-        qs = (
-            QuestionnaireResponse.objects.select_related("questionnaire", "created_by")
-            .filter(encounter__external_id=ctx.context.current_encounter_id)
-            .order_by("-created_date")
-        )
-        rows = list(qs[: limit + 1])
-        truncated = len(rows) > limit
-        rows = rows[:limit]
+    limit = max(1, min(200, limit))
+    qs = (
+        QuestionnaireResponse.objects.select_related("questionnaire", "created_by")
+        .filter(encounter__external_id=ctx.context.current_encounter_id)
+        .order_by("-created_date")
+    )
+    rows = list(qs[: limit + 1])
+    truncated = len(rows) > limit
+    rows = rows[:limit]
 
-        items = []
-        for r in rows:
-            q = r.questionnaire
-            items.append(
-                {
-                    "id": str(r.external_id),
-                    "questionnaire": {
-                        "id": str(q.external_id) if q else None,
-                        "slug": q.slug if q else None,
-                        "title": q.title if q else None,
-                    },
-                    "status": r.status,
-                    "submitted_at": r.created_date.isoformat() if r.created_date else None,
-                    "submitted_by": (
-                        r.created_by.username if r.created_by_id else None
-                    ),
-                    "responses": r.render_responses(),
-                }
-            )
-        return {"items": items, "count": len(items), "truncated": truncated}
-    except Exception as exc:
-        logger.exception("get_from_responses failed")
-        return {"error": f"{type(exc).__name__}: {exc}"}
+    items = []
+    for r in rows:
+        q = r.questionnaire
+        items.append(
+            {
+                "id": str(r.external_id),
+                "questionnaire": {
+                    "id": str(q.external_id) if q else None,
+                    "slug": q.slug if q else None,
+                    "title": q.title if q else None,
+                },
+                "status": r.status,
+                "submitted_at": (
+                    r.created_date.isoformat() if r.created_date else None
+                ),
+                "submitted_by": (
+                    r.created_by.username if r.created_by_id else None
+                ),
+                "responses": r.render_responses(),
+            }
+        )
+    return {"items": items, "count": len(items), "truncated": truncated}
 
 
 ALL_TOOLS = [
